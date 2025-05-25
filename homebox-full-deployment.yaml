@@ -1,0 +1,129 @@
+# Namespace
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homebox-namespace
+
+# Volume claim - Used on a Deployment
+#---
+#apiVersion: v1
+#kind: PersistentVolumeClaim
+#metadata:
+#  name: homebox-volume-claim
+#  namespace: homebox-namespace
+#spec:
+#  accessModes:
+#    - ReadWriteOnce
+#  resources:
+#    requests:
+#      storage: 1Gi
+
+# Deployment - Not used, replaced by StatefulSet
+#---
+#apiVersion: apps/v1
+#kind: Deployment
+#metadata:
+#  name: homebox-deployment
+#  namespace: homebox-namespace
+#spec:
+#  replicas: 1
+#  selector:
+#    matchLabels:
+#      app: homebox
+#  template:
+#    metadata:
+#      labels:
+#        app: homebox
+#    spec:
+#      containers:
+#        - name: homebox
+#          image: ghcr.io/hay-kot/homebox:latest
+#          ports:
+#            - containerPort: 7745
+#          volumeMounts:
+#            - name: homebox-volume
+#              mountPath: /data
+#      volumes:
+#        - name: homebox-volume
+#          persistentVolumeClaim:
+#            claimName: homebox-volume-claim
+
+# StatefulSet
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: homebox-statefulset
+  namespace: homebox-namespace
+spec:
+  serviceName: "homebox-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: homebox
+  template:
+    metadata:
+      labels:
+        app: homebox
+    spec:
+      containers:
+        - name: homebox
+          image: ghcr.io/hay-kot/homebox:latest
+          ports:
+            - containerPort: 7745
+          volumeMounts:
+            - name: homebox-volume
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: homebox-volume
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: local-path
+
+# Service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homebox-service
+  namespace: homebox-namespace
+spec:
+  selector:
+    app: homebox
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 7745
+
+# Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: homebox-ingress
+  namespace: homebox-namespace
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production  # Added for HTTPS
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure # Use web for HTTP
+    traefik.ingress.kubernetes.io/router.tls: "true" # Added for HTTPS
+spec:
+  rules:
+    - host: homebox.diogoferreira.pt
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: homebox-service
+                port:
+                  number: 80
+  tls: # Added for HTTPS
+    - hosts:
+        - homebox.diogoferreira.pt
+      secretName: homebox-certificate
